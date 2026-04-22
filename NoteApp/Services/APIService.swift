@@ -9,7 +9,7 @@ struct APINote: Codable {
 final class APIService {
     static let shared = APIService()
 
-    private let baseURL = "https://6807e425942707d722de7a47.mockapi.io/api/v1/notes"
+    private let baseURL = "https://69e91c9555d62f34797a4156.mockapi.io/api/note/notes"
 
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()
