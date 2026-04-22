@@ -1,66 +1,77 @@
-//
-//  ContentView.swift
-//  NoteApp
-//
-//  Created by Iuliana Stecalovici on 22.04.2026.
-//
-
 import SwiftUI
 import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @Query(sort: \Note.createdAt, order: .reverse) private var notes: [Note]
+    var networkMonitor: NetworkMonitor
 
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
+        NavigationStack {
+            VStack(spacing: 0) {
+                ConnectionBanner(isConnected: networkMonitor.isConnected)
+                    .padding(.top, 8)
+
+                List {
+                    ForEach(notes) { note in
+                        NavigationLink(destination: NoteDetailView(networkMonitor: networkMonitor, note: note)) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(note.content)
+                                    .lineLimit(2)
+                                Text(note.createdAt, format: .dateTime.month().day().hour().minute())
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     }
+                    .onDelete(perform: deleteNotes)
                 }
-                .onDelete(perform: deleteItems)
+                .listStyle(.plain)
             }
-#if os(macOS)
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200)
-#endif
+            .navigationTitle("Notes")
             .toolbar {
-#if os(iOS)
                 ToolbarItem(placement: .navigationBarTrailing) {
                     EditButton()
                 }
-#endif
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
+                ToolbarItem(placement: .primaryAction) {
+                    NavigationLink(destination: NoteDetailView(networkMonitor: networkMonitor)) {
+                        Label("New Note", systemImage: "plus")
                     }
                 }
             }
-        } detail: {
-            Text("Select an item")
         }
     }
 
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
-        }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
+    private func deleteNotes(offsets: IndexSet) {
         withAnimation {
             for index in offsets {
-                modelContext.delete(items[index])
+                let note = notes[index]
+                enqueueDelete(note: note)
+                modelContext.delete(note)
             }
+            try? modelContext.save()
+
+            if networkMonitor.isConnected {
+                triggerSync()
+            }
+        }
+    }
+
+    private func enqueueDelete(note: Note) {
+        let syncOp = SyncOperation(noteId: note.id, operation: "delete", payload: "{}")
+        modelContext.insert(syncOp)
+    }
+
+    private func triggerSync() {
+        let context = modelContext
+        Task {
+            let sync = SyncService(modelContext: context)
+            await sync.syncAll()
         }
     }
 }
 
 #Preview {
-    ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+    ContentView(networkMonitor: NetworkMonitor())
+        .modelContainer(for: [Note.self, SyncOperation.self], inMemory: true)
 }

@@ -1,18 +1,14 @@
-//
-//  NoteAppApp.swift
-//  NoteApp
-//
-//  Created by Iuliana Stecalovici on 22.04.2026.
-//
-
 import SwiftUI
 import SwiftData
 
 @main
 struct NoteAppApp: App {
+    @State private var networkMonitor = NetworkMonitor()
+
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            Note.self,
+            SyncOperation.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -25,7 +21,16 @@ struct NoteAppApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(networkMonitor: networkMonitor)
+                .onChange(of: networkMonitor.isConnected) { _, isConnected in
+                    if isConnected {
+                        let context = sharedModelContainer.mainContext
+                        Task {
+                            let sync = SyncService(modelContext: context)
+                            await sync.syncAll()
+                        }
+                    }
+                }
         }
         .modelContainer(sharedModelContainer)
     }
